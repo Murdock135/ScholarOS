@@ -1,0 +1,4 @@
+[workspace]
+members = ["crates/core", "apps/desktop/src-tauri"]
+default-members = ["crates/core"]
+resolver = "2"

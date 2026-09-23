@@ -1,0 +1,9 @@
+{
+  "identifier": "main",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "dialog:allow-save",
+    "core:window:allow-destroy"
+  ]
+}

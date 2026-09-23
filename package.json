@@ -1,0 +1,32 @@
+{
+  "name": "scholaros",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --config apps/desktop/vite.config.ts",
+    "build": "tsc --noEmit && vite build --config apps/desktop/vite.config.ts",
+    "desktop": "cd apps/desktop && tauri",
+    "test": "vitest run",
+    "test:ui": "playwright test",
+    "check": "npm run build && npm test && cargo test"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-dialog": "^2",
+    "react": "^19",
+    "react-dom": "^19"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^22",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "@vitejs/plugin-react": "^5",
+    "prettier": "^3.9.9",
+    "typescript": "^5.9",
+    "vite": "^7",
+    "vitest": "^4.1.11"
+  }
+}
