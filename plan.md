@@ -1488,3 +1488,7 @@ Reviewed all 20 sections against the project-local Scratchpad/Logs decision. Ali
 ## Second consistency review — lifecycle and delivery
 
 Resolved remaining conflicts in final-milestone completion, paused versus archived projects, reopening shared notes, live versus closed startup instances, carryover occurrence identity, metadata correction precedence, attachment-specific progress, offline event retries, and MVP dependencies. Phase 3a plus phase 4 defines the library/capture MVP; optional connectors, AI messages, export, graph work, and native-viewer research do not block it. External provider capabilities and user-specific exports remain discovery checks; this pass verifies internal design consistency, not those integrations.
+
+## Initial implementation boundary — 2026-09-23
+
+The implementation request resolves the initial operating-system target to **Linux**, using Tauri, React/TypeScript, Rust, and SQLite. The first vertical slice is narrower than full phase 1: Areas and draft Projects; their local Scratchpad/Logs; freeform autosave and context restoration; Milestones with Tasks; and validated backup/restore. Project activation/archive, sharing UI, imports, sessions, startup routines, integrations, AI, graphs, PDF tracking, browser capture, and the interactive milestone bar remain subsequent work. This boundary does not claim phase 1 or the overall MVP is complete. See [ADR 0001](docs/adr/0001-linux-local-foundation.md) for the implemented persistence and restore architecture.
