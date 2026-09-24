@@ -46,6 +46,12 @@ record!(Note {
     created_at: i64,
     updated_at: i64
 });
+record!(WorkspaceFile {
+    note_id: String,
+    context_id: String,
+    kind: String,
+    relative_path: String
+});
 record!(Link {
     note_id: String,
     context_id: String
@@ -70,7 +76,7 @@ record!(Milestone {
 record!(Task { id:String, milestone_id:String, name:String, done:bool, completed_at:Option<i64> });
 record!(Workspace { context_id:Option<String>, section:String });
 record!(Backup { format:String, version:u32, contexts:Vec<Context>, notes:Vec<Note>, links:Vec<Link>, revisions:Vec<Revision>, selections:Vec<Selection>, milestones:Vec<Milestone>, tasks:Vec<Task>, workspace:Workspace });
-record!(View { contexts:Vec<Context>, workspace:Workspace, notes:Vec<Note>, selection:Option<Selection>, milestones:Vec<Milestone>, tasks:Vec<Task> });
+record!(View { contexts:Vec<Context>, workspace:Workspace, notes:Vec<Note>, files:Vec<WorkspaceFile>, selection:Option<Selection>, milestones:Vec<Milestone>, tasks:Vec<Task> });
 record!(Preview {
     contexts: usize,
     notes: usize,
@@ -310,6 +316,7 @@ impl Store {
         let context = workspace.context_id.as_deref().unwrap_or("");
         let section = &workspace.section;
         let notes=query(&self.db,"SELECT n.id,n.kind,n.body,n.revision,n.created_at,n.updated_at FROM notes n JOIN note_contexts l ON l.note_id=n.id JOIN note_files f ON f.note_id=n.id WHERE l.context_id=?1 AND n.kind=?2 AND f.missing=0 ORDER BY n.created_at,n.id",params![context,section],note)?;
+        let files=query(&self.db,"SELECT n.id,l.context_id,n.kind,f.relative_path FROM notes n JOIN note_contexts l ON l.note_id=n.id JOIN note_files f ON f.note_id=n.id WHERE f.missing=0 ORDER BY f.relative_path,n.id",[],workspace_file)?;
         let selection=self.db.query_row("SELECT context_id,section,note_id,cursor FROM selections WHERE context_id=?1 AND section=?2",params![context,section],selection).optional().map_err(err)?;
         let milestones = query(
             &self.db,
@@ -322,6 +329,7 @@ impl Store {
             contexts,
             workspace,
             notes,
+            files,
             selection,
             milestones,
             tasks,
@@ -483,6 +491,14 @@ fn note(r: &rusqlite::Row) -> rusqlite::Result<Note> {
         revision: r.get(3)?,
         created_at: r.get(4)?,
         updated_at: r.get(5)?,
+    })
+}
+fn workspace_file(r: &rusqlite::Row) -> rusqlite::Result<WorkspaceFile> {
+    Ok(WorkspaceFile {
+        note_id: r.get(0)?,
+        context_id: r.get(1)?,
+        kind: r.get(2)?,
+        relative_path: r.get(3)?,
     })
 }
 fn selection(r: &rusqlite::Row) -> rusqlite::Result<Selection> {

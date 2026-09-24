@@ -2,7 +2,10 @@ import { test, expect } from "@playwright/test";
 import { readdir, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-async function findDirectory(root: string, namePrefix: string): Promise<string> {
+async function findDirectory(
+  root: string,
+  namePrefix: string,
+): Promise<string> {
   for (const entry of await readdir(root, { withFileTypes: true })) {
     if (!entry.isDirectory()) continue;
     const child = path.join(root, entry.name);
@@ -10,7 +13,9 @@ async function findDirectory(root: string, namePrefix: string): Promise<string> 
     const found = await findDirectory(child, namePrefix).catch(() => "");
     if (found) return found;
   }
-  throw Error(`Could not find a directory starting with ${namePrefix} below ${root}`);
+  throw Error(
+    `Could not find a directory starting with ${namePrefix} below ${root}`,
+  );
 }
 test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and validated restore", async ({
   page,
@@ -21,7 +26,7 @@ test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and valida
   await page.getByRole("textbox", { name: "Area name" }).fill("Research");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Research", exact: true }),
+    page.locator(".breadcrumbs").getByText("Research", { exact: true }),
   ).toBeVisible();
   await page.getByRole("button", { name: "+ Project", exact: true }).click();
   await page
@@ -29,7 +34,9 @@ test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and valida
     .fill("Evidence synthesis");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Evidence synthesis", exact: true }),
+    page
+      .locator(".breadcrumbs")
+      .getByText("Evidence synthesis", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "New note", exact: true })
@@ -52,7 +59,7 @@ test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and valida
   await page.getByRole("textbox", { name: "Project name" }).fill("Teaching");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Teaching", exact: true }),
+    page.locator(".breadcrumbs").getByText("Teaching", { exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("A working hypothesis", { exact: true }),
@@ -65,7 +72,8 @@ test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and valida
     .getByRole("textbox", { name: "Note body" })
     .fill("Seminar outline");
   await page
-    .getByRole("button", { name: "○ Evidence synthesis", exact: true })
+    .locator("summary")
+    .filter({ hasText: "Evidence synthesis" })
     .click();
   await expect(
     page.getByRole("tab", { name: "Logs", exact: true }),
@@ -150,7 +158,11 @@ test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and valida
   await expect(page.getByRole("textbox", { name: "Note body" })).toHaveValue(
     "Second scratch note",
   );
-  await page.getByRole("button", { name: /A working hypothesis/ }).click();
+  await page
+    .locator("details.nested-context")
+    .filter({ hasText: "Evidence synthesis" })
+    .getByRole("button", { name: "A working hypothesis.md", exact: true })
+    .click();
   await expect(page.getByRole("textbox", { name: "Note body" })).toHaveValue(
     "A working hypothesis\nEvidence is not the same as consensus.",
   );
@@ -168,7 +180,7 @@ test("failed saves block navigation and preserve recoverable drafts across reloa
     .fill("Recovery check");
   await page.getByRole("button", { name: "Add", exact: true }).click();
   await expect(
-    page.getByRole("heading", { name: "Recovery check", exact: true }),
+    page.locator(".breadcrumbs").getByText("Recovery check", { exact: true }),
   ).toBeVisible();
   await page
     .getByRole("button", { name: "New note", exact: true })
@@ -267,7 +279,11 @@ test("failed saves block navigation and preserve recoverable drafts across reloa
   await expect(
     page.getByRole("status").filter({ hasText: "Saved locally" }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /Saved elsewhere/ }).click();
+  await page
+    .locator("details.nested-context")
+    .filter({ hasText: "Recovery check" })
+    .getByRole("button", { name: "Untitled.md", exact: true })
+    .click();
   await expect(page.getByRole("textbox", { name: "Note body" })).toHaveValue(
     "Saved elsewhere",
   );
@@ -299,9 +315,11 @@ test("Markdown created, moved, and deleted outside ScholarOS is reconciled", asy
   await writeFile(created, "Created outside ScholarOS");
   await page.reload();
   await expect(
-    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+    page.getByRole("button", { name: "Created in terminal.md", exact: true }),
   ).toBeVisible();
-  await page.getByRole("button", { name: /^Created outside ScholarOS/ }).click();
+  await page
+    .getByRole("button", { name: "Created in terminal.md", exact: true })
+    .click();
   await expect(page.getByRole("textbox", { name: "Note body" })).toHaveValue(
     "Created outside ScholarOS",
   );
@@ -309,13 +327,13 @@ test("Markdown created, moved, and deleted outside ScholarOS is reconciled", asy
   await rename(created, moved);
   await page.getByRole("tab", { name: "Logs", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+    page.getByRole("button", { name: "Created in terminal.md", exact: true }),
   ).toBeVisible();
 
   await unlink(moved);
   await page.getByRole("tab", { name: "Scratchpad", exact: true }).click();
   await page.getByRole("tab", { name: "Logs", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+    page.getByRole("button", { name: "Created in terminal.md", exact: true }),
   ).toHaveCount(0);
 });

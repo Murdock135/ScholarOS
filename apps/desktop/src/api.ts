@@ -30,6 +30,12 @@ export interface Note {
   created_at: number;
   updated_at: number;
 }
+export interface WorkspaceFile {
+  note_id: string;
+  context_id: string;
+  kind: "scratch" | "log";
+  relative_path: string;
+}
 export interface Selection {
   context_id: string;
   section: string;
@@ -40,6 +46,7 @@ export interface View {
   contexts: Context[];
   workspace: { context_id: string | null; section: Section };
   notes: Note[];
+  files: WorkspaceFile[];
   selection: Selection | null;
   milestones: { id: string; project_id: string; name: string }[];
   tasks: {

@@ -10,8 +10,10 @@ import {
   type View,
   type Section,
   type Preview,
+  type WorkspaceFile,
 } from "./api";
 import { Editor } from "./editor";
+import { WorkspaceExplorer } from "./WorkspaceExplorer";
 
 const sectionName = (s: Section) =>
   ({ scratch: "Scratchpad", log: "Logs", milestones: "Milestones" })[s];
@@ -177,6 +179,27 @@ export default function App() {
       adopt(await execute({ type: "open", context_id, section: s })),
     );
   }
+  async function openFile(file: WorkspaceFile) {
+    await action(async () => {
+      await execute({
+        type: "open",
+        context_id: file.context_id,
+        section: file.kind,
+      });
+      adopt(
+        await execute({
+          type: "select_note",
+          context_id: file.context_id,
+          section: file.kind,
+          note_id: file.note_id,
+          cursor:
+            file.note_id === editor.current?.note.id
+              ? editor.current.cursor
+              : 0,
+        }),
+      );
+    });
+  }
   async function create(kind: "area" | "project", name: string) {
     await action(async () => {
       adopt(
@@ -215,7 +238,56 @@ export default function App() {
   }
   return (
     <div className="app">
-      <aside className="sidebar">
+      <aside className="activity-bar" aria-label="Activity">
+        <div className="app-mark">S</div>
+        <button
+          className="activity active"
+          aria-label="Explorer"
+          title="Explorer"
+        >
+          ▱
+        </button>
+        <button
+          className="activity"
+          aria-label="Search"
+          title="Search"
+          disabled
+        >
+          ⌕
+        </button>
+        <button
+          className="activity"
+          aria-label="Research"
+          title="Research"
+          disabled
+        >
+          ◉
+        </button>
+        <div className="activity-spacer" />
+        <button
+          className="activity"
+          aria-label="Open workspace folder"
+          title="Open workspace folder"
+          disabled={busy || !view}
+          onClick={() =>
+            void action(async () => {
+              const path = await openWorkspace();
+              setNotice(`Markdown workspace: ${path}`);
+            })
+          }
+        >
+          ⌂
+        </button>
+        <button
+          className="activity"
+          aria-label="Settings"
+          title="Settings"
+          disabled
+        >
+          ⚙
+        </button>
+      </aside>
+      <aside className="sidebar explorer">
         <div className="brand">
           <span className="brand-mark">S</span>
           <div>
@@ -226,6 +298,25 @@ export default function App() {
           WORK <span>Local workspace</span>
         </div>
         <div className="create-buttons">
+          <button
+            aria-label="New note"
+            disabled={busy || !context || section === "milestones"}
+            onClick={() =>
+              context &&
+              section !== "milestones" &&
+              void action(async () =>
+                adopt(
+                  await execute({
+                    type: "create_note",
+                    context_id: context.id,
+                    section,
+                  }),
+                ),
+              )
+            }
+          >
+            + Note
+          </button>
           <button
             onClick={() => {
               setCreator("project");
@@ -272,52 +363,17 @@ export default function App() {
             />
           </div>
         )}
-        <nav aria-label="Workspaces">
-          {view?.contexts
-            .filter((c) => c.kind === "area")
-            .map((a) => (
-              <div className="area-group" key={a.id}>
-                <button
-                  className={`context area ${context?.id === a.id ? "selected" : ""}`}
-                  aria-current={context?.id === a.id ? "page" : undefined}
-                  disabled={busy}
-                  onClick={() => void open(a.id, a.last_section)}
-                >
-                  <span>▧</span>
-                  {a.name}
-                </button>
-                {view.contexts
-                  .filter((c) => c.area_id === a.id)
-                  .map((p) => (
-                    <button
-                      key={p.id}
-                      className={`context project ${context?.id === p.id ? "selected" : ""}`}
-                      disabled={busy}
-                      onClick={() => void open(p.id, p.last_section)}
-                    >
-                      <span>○</span>
-                      {p.name}
-                    </button>
-                  ))}
-              </div>
-            ))}
-          {!!view?.contexts.some((c) => c.kind === "project" && !c.area_id) && (
-            <div className="nav-heading">DRAFT PROJECTS</div>
-          )}
-          {view?.contexts
-            .filter((c) => c.kind === "project" && !c.area_id)
-            .map((p) => (
-              <button
-                key={p.id}
-                className={`context ${context?.id === p.id ? "selected" : ""}`}
-                disabled={busy}
-                onClick={() => void open(p.id, p.last_section)}
-              >
-                <span>○</span>
-                {p.name}
-              </button>
-            ))}
-        </nav>
+        <WorkspaceExplorer
+          contexts={view?.contexts ?? []}
+          files={view?.files ?? []}
+          activeContext={context?.id}
+          activeSection={section}
+          activeNote={ed?.note.id}
+          onOpenSection={(contextId, nextSection) =>
+            void open(contextId, nextSection)
+          }
+          onOpenFile={(workspaceFile) => void openFile(workspaceFile)}
+        />
         <div className="sidebar-footer">
           <span className="offline-dot" />
           Stored on this device
@@ -473,6 +529,33 @@ export default function App() {
                   ? "DRAFT PROJECT"
                   : "ONGOING RESPONSIBILITY"}
               </div>
+              <div className="breadcrumbs">
+                <span>ScholarOS</span>
+                <b>›</b>
+                {context.area_id && (
+                  <>
+                    <span>
+                      {
+                        view?.contexts.find((c) => c.id === context.area_id)
+                          ?.name
+                      }
+                    </span>
+                    <b>›</b>
+                  </>
+                )}
+                <span>{context.name}</span>
+                <b>›</b>
+                <span>{sectionName(section)}</span>
+              </div>
+              {ed && (
+                <div className="file-tab" aria-label="Active editor tab">
+                  <span>M↓</span>
+                  {view?.files
+                    .find((file) => file.note_id === ed.note.id)
+                    ?.relative_path.split("/")
+                    .at(-1) ?? "Untitled.md"}
+                </div>
+              )}
               <h1>{context.name}</h1>
               <div
                 className="tabs"
@@ -738,6 +821,16 @@ export default function App() {
             )}
           </>
         )}
+        <footer className="status-bar">
+          <span className="local-status">● Local</span>
+          <span>{context?.name ?? "No workspace selected"}</span>
+          <span className="status-spacer" />
+          <span>{ed?.status ?? "Ready"}</span>
+          <span>
+            {ed?.body.trim() ? ed.body.trim().split(/\s+/).length : 0} words
+          </span>
+          <span>Markdown</span>
+        </footer>
       </main>
       <span hidden>{tick}</span>
     </div>
