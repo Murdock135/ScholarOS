@@ -12,9 +12,9 @@ The foundation stores note bodies only in SQLite and presents project pages with
 
 ## Decision
 
-Store every Scratchpad and Log note as a UTF-8 Markdown file inside a ScholarOS workspace directory. Areas and Projects form folders; their Scratchpad and Logs form child folders. File names include a stable note identifier so display names can change without losing identity. SQLite continues to store relationships, hierarchy, selections, tasks, and append-only revision history.
+Store every Scratchpad and Log note as a UTF-8 Markdown file inside an app-managed default ScholarOS workspace directory. Areas and Projects form folders; their Scratchpad and Logs form child folders. Users may create, name, nest, edit, move, rename, or delete Markdown files directly with the terminal, file explorer, Obsidian, or VS Code. SQLite/generated metadata maps user-controlled paths to stable note identities and continues to store relationships, hierarchy, selections, tasks, and append-only revision history.
 
-Existing SQLite notes are materialized as Markdown files during migration. ScholarOS imports external file changes as revisions before serving or mutating a note. A missing file is recreated from the latest saved revision; deletion and trash require an explicit future workflow. An oversized, unreadable, or conflicting external edit must fail visibly while retaining both the database revision and any in-app draft.
+Existing SQLite notes are materialized as Markdown files during migration. ScholarOS discovers Markdown recursively within recognized Scratchpad and Logs folders and imports external content changes as revisions before serving or mutating a note. Folder location determines context and note kind. An external deletion removes the note from active file views but retains its last body and revisions for recovery. Ambiguous moves or conflicts preserve history and import separately rather than silently merging. An oversized, unreadable, or conflicting external edit fails visibly while retaining the database revision and any in-app draft.
 
 The desktop UI uses an explorer tree, editor tabs, and breadcrumbs. Tree navigation still issues context-scoped commands, so opening a folder never broadens a Project or Area's Scratchpad to unrelated notes.
 
@@ -22,8 +22,8 @@ Portable backup continues to include note bodies and history. Restore materializ
 
 ## Consequences
 
-Users can edit notes with Obsidian, VS Code, and other Markdown tools. ScholarOS must now reconcile two writers and cannot describe SQLite as the sole authority for note content. Stable IDs in names are less visually minimal, but avoid ambiguous matching after external renames. Filesystem watching, explicit rename/delete, shared-note file representation, and selectable workspace locations require complete follow-up slices; until then synchronization occurs on application refresh and navigation.
+Users can manage ordinary, cleanly named Markdown files with Obsidian, VS Code, the terminal, and file explorers. ScholarOS must reconcile two writers and cannot describe SQLite as the sole authority for note content. The first implementation refreshes on application focus and navigation; continuous filesystem watching and safe workspace relocation can follow. Shared-note file representation still requires a complete follow-up design before sharing UI ships.
 
 ## Validation
 
-Storage tests must cover initial materialization, external edits becoming revisions, missing-file recovery, conflicts, restart behavior, and backup/restore consistency. UI tests must cover explorer scoping and opening a note from the tree.
+Storage tests must cover initial materialization, direct file discovery, nested folders, external edits, moves between contexts/sections, deletion recovery, conflicts, restart behavior, and backup/restore consistency. UI tests must cover filesystem reconciliation, explorer scoping, and opening a note from the tree.

@@ -1,4 +1,17 @@
 import { test, expect } from "@playwright/test";
+import { readdir, rename, unlink, writeFile } from "node:fs/promises";
+import path from "node:path";
+
+async function findDirectory(root: string, namePrefix: string): Promise<string> {
+  for (const entry of await readdir(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const child = path.join(root, entry.name);
+    if (entry.name.startsWith(namePrefix)) return child;
+    const found = await findDirectory(child, namePrefix).catch(() => "");
+    if (found) return found;
+  }
+  throw Error(`Could not find a directory starting with ${namePrefix} below ${root}`);
+}
 test("real SQLite workflow: scoped notes, autosave, reopen, hierarchy and validated restore", async ({
   page,
   request,
@@ -260,4 +273,49 @@ test("failed saves block navigation and preserve recoverable drafts across reloa
   );
   await page.getByRole("tab", { name: "Logs", exact: true }).click();
   await expect(page.getByRole("textbox", { name: "Note body" })).toHaveCount(0);
+});
+
+test("Markdown created, moved, and deleted outside ScholarOS is reconciled", async ({
+  page,
+  request,
+}) => {
+  await page.goto("/");
+  await page.getByRole("button", { name: "+ Project", exact: true }).click();
+  await page
+    .getByRole("textbox", { name: "Project name" })
+    .fill("Terminal workspace");
+  await page.getByRole("button", { name: "Add", exact: true }).click();
+
+  const response = await request.post("http://127.0.0.1:4319", {
+    data: JSON.stringify({ method: "test_workspace_path", args: {} }),
+  });
+  const workspace = (await response.json()).value as string;
+  const projectRoot = await findDirectory(workspace, "Terminal workspace--");
+  const scratch = path.join(projectRoot, "Scratchpad");
+  const logs = path.join(projectRoot, "Logs");
+  const created = path.join(scratch, "Created in terminal.md");
+  const moved = path.join(logs, "Renamed in files.md");
+
+  await writeFile(created, "Created outside ScholarOS");
+  await page.reload();
+  await expect(
+    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+  ).toBeVisible();
+  await page.getByRole("button", { name: /^Created outside ScholarOS/ }).click();
+  await expect(page.getByRole("textbox", { name: "Note body" })).toHaveValue(
+    "Created outside ScholarOS",
+  );
+
+  await rename(created, moved);
+  await page.getByRole("tab", { name: "Logs", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+  ).toBeVisible();
+
+  await unlink(moved);
+  await page.getByRole("tab", { name: "Scratchpad", exact: true }).click();
+  await page.getByRole("tab", { name: "Logs", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: /^Created outside ScholarOS/ }),
+  ).toHaveCount(0);
 });

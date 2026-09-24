@@ -18,6 +18,19 @@ fn preview_backup(json: String) -> Result<Preview, String> {
     Store::preview(&json)
 }
 #[tauri::command]
+fn open_workspace(store: tauri::State<Mutex<Store>>) -> Result<String, String> {
+    let path = store
+        .lock()
+        .map_err(|e| e.to_string())?
+        .workspace_path()
+        .to_path_buf();
+    std::process::Command::new("xdg-open")
+        .arg(&path)
+        .spawn()
+        .map_err(|e| format!("Could not open the Markdown workspace: {e}"))?;
+    Ok(path.display().to_string())
+}
+#[tauri::command]
 fn restore_backup(store: tauri::State<Mutex<Store>>, json: String) -> Result<String, String> {
     store
         .lock()
@@ -43,6 +56,7 @@ fn main() {
             execute,
             export_backup,
             preview_backup,
+            open_workspace,
             restore_backup
         ])
         .run(tauri::generate_context!())

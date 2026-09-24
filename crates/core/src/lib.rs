@@ -1,3 +1,5 @@
+mod files;
+
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::{
@@ -125,6 +127,7 @@ pub enum Command {
 pub struct Store {
     db: Connection,
     directory: PathBuf,
+    vault: PathBuf,
 }
 impl Store {
     pub fn open(path: &Path) -> Result<Self> {
@@ -134,9 +137,18 @@ impl Store {
         configure(&db)?;
         db.pragma_update(None, "journal_mode", "WAL").map_err(err)?;
         migrate(&db)?;
-        Ok(Self { db, directory })
+        let vault = files::default_root(&directory);
+        let mut store = Self {
+            db,
+            directory,
+            vault,
+        };
+        files::reconcile(&mut store.db, &store.vault)?;
+        Ok(store)
     }
     pub fn execute(&mut self, command: Command) -> Result<View> {
+        files::reconcile(&mut self.db, &self.vault)?;
+        let mut file_rollback: Option<(PathBuf, String)> = None;
         let tx = self.db.transaction().map_err(err)?;
         match command {
             Command::View => {}
@@ -215,6 +227,11 @@ impl Store {
                 if body.len() > 10_000_000 {
                     return Err("Note exceeds the 10 MB limit; draft retained.".into());
                 }
+                let previous: String = tx
+                    .query_row("SELECT body FROM notes WHERE id=?1", [&note_id], |row| {
+                        row.get(0)
+                    })
+                    .map_err(err)?;
                 let time = now();
                 let changed=tx.execute("UPDATE notes SET body=?1,revision=revision+1,updated_at=max(updated_at,?2) WHERE id=?3 AND revision=?4 AND EXISTS(SELECT 1 FROM note_contexts WHERE note_id=?3 AND context_id=?5)",params![body,time,note_id,revision,context_id]).map_err(err)?;
                 if changed != 1 {
@@ -222,10 +239,21 @@ impl Store {
                 }
                 tx.execute("INSERT INTO revisions SELECT id,revision,body,updated_at FROM notes WHERE id=?1",[&note_id]).map_err(err)?;
                 let section: String = tx
-                    .query_row("SELECT kind FROM notes WHERE id=?1", [&note_id], |r| {
-                        r.get(0)
+                    .query_row("SELECT kind FROM notes WHERE id=?1", [&note_id], |row| {
+                        row.get(0)
                     })
                     .map_err(err)?;
+                let written = files::write_note(&tx, &self.vault, &note_id, &body)?;
+                file_rollback = Some((written.path.clone(), previous));
+                if let Err(error) = tx.execute(
+                    "UPDATE note_files SET content_hash=?1,byte_size=?2,modified_ns=?3,missing=0 WHERE note_id=?4",
+                    params![written.hash, written.size, written.modified_ns, note_id],
+                ) {
+                    if let Some((path, previous)) = &file_rollback {
+                        let _ = files::restore_body(path, previous);
+                    }
+                    return Err(err(error));
+                }
                 select(&tx, &context_id, &section, &note_id, cursor)?;
             }
             Command::CreateMilestone {
@@ -261,15 +289,27 @@ impl Store {
                 }
             }
         }
-        tx.commit().map_err(err)?;
-        self.view()
+        if let Err(error) = tx.commit() {
+            if let Some((path, previous)) = &file_rollback {
+                files::restore_body(path, previous).map_err(|restore_error| {
+                    format!("{error}; also failed to restore Markdown file: {restore_error}")
+                })?;
+            }
+            return Err(err(error));
+        }
+        files::materialize(&mut self.db, &self.vault, false)?;
+        self.view_raw()
     }
-    pub fn view(&self) -> Result<View> {
+    pub fn view(&mut self) -> Result<View> {
+        files::reconcile(&mut self.db, &self.vault)?;
+        self.view_raw()
+    }
+    fn view_raw(&self) -> Result<View> {
         let contexts = contexts(&self.db)?;
         let workspace = workspace(&self.db)?;
         let context = workspace.context_id.as_deref().unwrap_or("");
         let section = &workspace.section;
-        let notes=query(&self.db,"SELECT n.id,n.kind,n.body,n.revision,n.created_at,n.updated_at FROM notes n JOIN note_contexts l ON l.note_id=n.id WHERE l.context_id=?1 AND n.kind=?2 ORDER BY n.created_at,n.id",params![context,section],note)?;
+        let notes=query(&self.db,"SELECT n.id,n.kind,n.body,n.revision,n.created_at,n.updated_at FROM notes n JOIN note_contexts l ON l.note_id=n.id JOIN note_files f ON f.note_id=n.id WHERE l.context_id=?1 AND n.kind=?2 AND f.missing=0 ORDER BY n.created_at,n.id",params![context,section],note)?;
         let selection=self.db.query_row("SELECT context_id,section,note_id,cursor FROM selections WHERE context_id=?1 AND section=?2",params![context,section],selection).optional().map_err(err)?;
         let milestones = query(
             &self.db,
@@ -287,6 +327,9 @@ impl Store {
             tasks,
         })
     }
+    pub fn workspace_path(&self) -> &Path {
+        &self.vault
+    }
     pub fn backup(&self) -> Result<String> {
         // One read transaction gives a consistent snapshot even with another connection.
         let tx = self.db.unchecked_transaction().map_err(err)?;
@@ -295,7 +338,8 @@ impl Store {
         tx.commit().map_err(err)?;
         Ok(json)
     }
-    pub fn export(&self, path: &Path) -> Result<()> {
+    pub fn export(&mut self, path: &Path) -> Result<()> {
+        files::reconcile(&mut self.db, &self.vault)?;
         atomic_write(path, self.backup()?.as_bytes())
     }
     pub fn preview(json: &str) -> Result<Preview> {
@@ -309,16 +353,48 @@ impl Store {
     }
     pub fn restore(&mut self, json: &str) -> Result<PathBuf> {
         let (data, _staging) = stage(json)?;
-        // A durable rollback snapshot is required before replacing any authoritative rows.
-        let rollback = self.directory.join(format!("before-restore-{}.json", id()));
-        atomic_write(&rollback, self.backup()?.as_bytes())?;
-        let tx = self.db.transaction().map_err(err)?;
-        tx.execute_batch("DELETE FROM selections; DELETE FROM revisions; DELETE FROM note_contexts; DELETE FROM notes; DELETE FROM tasks; DELETE FROM milestones; DELETE FROM workspace; DELETE FROM contexts WHERE kind='project'; DELETE FROM contexts;").map_err(err)?;
-        insert_backup(&tx, &data)?;
-        tx.commit().map_err(err)?;
+        files::reconcile(&mut self.db, &self.vault)?;
+        let before_json = self.backup()?;
+        let before: Backup = serde_json::from_str(&before_json).map_err(err)?;
+        let restore_id = id();
+        let rollback = self
+            .directory
+            .join(format!("before-restore-{restore_id}.json"));
+        let workspace_rollback = self
+            .directory
+            .join(format!("before-restore-{restore_id}-workspace"));
+        atomic_write(&rollback, before_json.as_bytes())?;
+        fs::rename(&self.vault, &workspace_rollback).map_err(err)?;
+        let restored = replace_backup_rows(&mut self.db, &data)
+            .and_then(|_| files::materialize(&mut self.db, &self.vault, true));
+        if let Err(error) = restored {
+            let database_recovery = replace_backup_rows(&mut self.db, &before);
+            if self.vault.exists() {
+                let failed = self
+                    .directory
+                    .join(format!("failed-restore-{restore_id}-workspace"));
+                let _ = fs::rename(&self.vault, failed);
+            }
+            let file_recovery = fs::rename(&workspace_rollback, &self.vault).map_err(err);
+            if let Err(recovery) = database_recovery.and(file_recovery) {
+                return Err(format!(
+                    "Restore failed: {error}. Automatic rollback also failed: {recovery}"
+                ));
+            }
+            return Err(error);
+        }
         Ok(rollback)
     }
 }
+fn replace_backup_rows(db: &mut Connection, data: &Backup) -> Result<()> {
+    let tx = db.transaction().map_err(err)?;
+    tx.execute_batch("DELETE FROM selections; DELETE FROM revisions; DELETE FROM note_files; DELETE FROM note_contexts; DELETE FROM notes; DELETE FROM tasks; DELETE FROM milestones; DELETE FROM workspace; DELETE FROM contexts WHERE kind='project'; DELETE FROM contexts;")
+        .map_err(err)?;
+    insert_backup(&tx, data)?;
+    tx.commit().map_err(err)?;
+    Ok(())
+}
+
 fn configure(db: &Connection) -> Result<()> {
     db.pragma_update(None, "foreign_keys", "ON").map_err(err)?;
     db.busy_timeout(std::time::Duration::from_secs(5))
@@ -334,10 +410,19 @@ fn migrate(db: &Connection) -> Result<()> {
             let tx = db.unchecked_transaction().map_err(err)?;
             tx.execute_batch(include_str!("migrations/0001_foundation.sql"))
                 .map_err(err)?;
+            tx.execute_batch(include_str!("migrations/0002_live_markdown.sql"))
+                .map_err(err)?;
             tx.commit().map_err(err)?;
             Ok(())
         }
-        1 => Ok(()),
+        1 => {
+            let tx = db.unchecked_transaction().map_err(err)?;
+            tx.execute_batch(include_str!("migrations/0002_live_markdown.sql"))
+                .map_err(err)?;
+            tx.commit().map_err(err)?;
+            Ok(())
+        }
+        2 => Ok(()),
         _ => Err(format!(
             "Unsupported database schema {version}; database left unchanged."
         )),

@@ -348,17 +348,17 @@ The live workspace preserves project/area context and the Scratchpad/Logs distin
 ```text
 ScholarOS Workspace/
 ├── Areas/<area-name>--<stable-id>/
-│   ├── Scratchpad/<title-or-untitled>--<stable-id>.md
-│   ├── Logs/<title-or-untitled>--<stable-id>.md
+│   ├── Scratchpad/<user-chosen-name>.md
+│   ├── Logs/<user-chosen-name>.md
 │   └── Projects/<project-name>--<stable-id>/...
 ├── Projects/<unassigned-project>--<stable-id>/...
-├── Inbox/<title-or-untitled>--<stable-id>.md
+├── Inbox/<user-chosen-name>.md
 └── .scholaros/                    # generated identity/index data; no secrets
 ```
 
-Files are UTF-8 Markdown and remain freeform; frontmatter is optional user content, not required system metadata. Stable IDs in names keep identity across safe user renames. ScholarOS watches or refreshes the workspace, validates external changes, records them as revisions, and updates search indexes. “Saved” means both the Markdown file and structured revision metadata were durably committed. If those writes cannot be completed consistently, retain the in-app draft and report recovery actions.
+Files are UTF-8 Markdown and remain freeform; frontmatter is optional user content, not required system metadata. Filenames and nested folders inside Scratchpad and Logs are user-controlled. Stable note IDs and path mappings live in SQLite/generated metadata rather than being forced into filenames. The initial workspace uses an app-managed default location with an “Open workspace folder” action; safe relocation can follow later. ScholarOS discovers Markdown created from the terminal or file explorer, infers its Project/Area and note kind from the containing Scratchpad/Logs tree, records external changes as revisions, and updates search indexes. “Saved” means both the Markdown file and structured revision metadata were durably committed. If those writes cannot be completed consistently, retain the in-app draft and report recovery actions.
 
-A missing or externally moved file is not immediate permission to delete a note. Reconcile it by stable identity when possible; otherwise retain the last revision and place the discrepancy in recovery review. Explicit deletion moves the file and current record to recoverable trash. Ignore transient editor files and prevent symlink/path traversal outside the selected workspace.
+An external rename or move preserves identity when ScholarOS can match it unambiguously; moving between recognized Scratchpad/Logs trees changes the note’s context or kind. An externally deleted file leaves the active view while its last body and revisions remain recoverable in SQLite. Ambiguous rename-plus-edit operations retain the missing history and import the new file separately rather than risking a false merge. Ignore transient/non-Markdown files and prevent symlink/path traversal outside the managed workspace.
 
 The first live-file slice covers notes with one editable context. Shared notes must still have one editable body: do not create independent Markdown copies in every linked folder. Before sharing UI ships, resolve its physical representation in a proposal and test it with editors that save by atomic replacement. The application explorer may present context-scoped aliases regardless of the physical representation. Archived contexts retain revision snapshots rather than writable file copies.
 
@@ -1377,9 +1377,7 @@ This aligns with the repository’s existing direction that secrets should not b
 
 The most important remaining discovery questions are:
 
-1. **Live workspace behavior**
-   - Whether the initial workspace uses an app-managed default location or requires user selection; support safe relocation in either case.
-   - Whether phase 1 imports arbitrary Markdown already placed in the workspace or only files created/imported through ScholarOS.
+1. **Shared-note file representation**
    - Before note sharing ships, choose a cross-platform physical representation that preserves one editable body under external editors that use atomic replacement.
 
 2. **Platform expansion**
@@ -1492,4 +1490,4 @@ This replaces the earlier one-way-export-only decision for research notes. Expor
 
 ## Full-plan consistency review — 2026-09-23
 
-Reviewed all sections after adopting the live Markdown workspace. Aligned the recommendation, work model, browser capture boundary, technical architecture, data entities, delivery phases, migration, tests, performance, security, discovery questions, and MVP. Live research notes now enter in phase 1; phase 7 covers structured export and optional Obsidian enhancements. The initial platform is Linux. Shared-note physical representation remains an explicit design item before sharing UI is implemented; it must preserve one editable body without relying on file copies that can diverge. Rechecked the linked official Zotero, Mendeley, Drive, and YouTube documentation on 2026-09-23; the scoped connector claims remain supported, while Mendeley exports contain reference metadata and do not directly export PDFs.
+Reviewed all sections after adopting the live Markdown workspace. Aligned the recommendation, work model, browser capture boundary, technical architecture, data entities, delivery phases, migration, tests, performance, security, discovery questions, and MVP. Live research notes now enter in phase 1; phase 7 covers structured export and optional Obsidian enhancements. The initial platform is Linux. The app-managed default workspace and direct discovery of user-created Markdown are resolved phase-1 requirements. Shared-note physical representation remains an explicit design item before sharing UI is implemented; it must preserve one editable body without relying on file copies that can diverge. Rechecked the linked official Zotero, Mendeley, Drive, and YouTube documentation on 2026-09-23; the scoped connector claims remain supported, while Mendeley exports contain reference metadata and do not directly export PDFs.

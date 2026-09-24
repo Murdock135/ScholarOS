@@ -187,15 +187,140 @@ fn rollback_write_failure_and_database_write_failure_are_atomic() {
     );
     assert_eq!(s.backup().unwrap(), before);
     other.execute_batch("DROP TRIGGER fail_save").unwrap();
-    // Move the directory so the open DB remains available but rollback destination fails.
+    // Replace the application-data directory with a file so reconciliation and rollback cannot write.
     let moved = dir.path().with_extension("moved");
     std::fs::rename(dir.path(), &moved).unwrap();
+    std::fs::write(dir.path(), "blocked").unwrap();
     assert!(s.restore(&before).is_err());
     assert_eq!(s.backup().unwrap(), before);
     drop(other);
     drop(s);
+    std::fs::remove_file(dir.path()).unwrap();
     std::fs::rename(&moved, dir.path()).unwrap();
 }
+fn markdown_files(root: &std::path::Path) -> Vec<std::path::PathBuf> {
+    fn visit(directory: &std::path::Path, files: &mut Vec<std::path::PathBuf>) {
+        for entry in std::fs::read_dir(directory).unwrap() {
+            let entry = entry.unwrap();
+            if entry.file_type().unwrap().is_dir() {
+                visit(&entry.path(), files);
+            } else if entry.path().extension().and_then(|value| value.to_str()) == Some("md") {
+                files.push(entry.path());
+            }
+        }
+    }
+    let mut files = Vec::new();
+    visit(root, &mut files);
+    files.sort();
+    files
+}
+
+#[test]
+fn workspace_materializes_and_reconciles_external_file_operations() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("work.sqlite");
+    let mut store = Store::open(&path).unwrap();
+    let project = context(&mut store, "project", "External files", None);
+    let first = note(&mut store, &project, "scratch");
+    save(&mut store, &project, &first, "Written in ScholarOS", 1);
+
+    let workspace = store.workspace_path().to_path_buf();
+    let files = markdown_files(&workspace);
+    assert_eq!(files.len(), 1);
+    assert_eq!(
+        std::fs::read_to_string(&files[0]).unwrap(),
+        "Written in ScholarOS"
+    );
+
+    std::fs::write(&files[0], "Changed from VS Code with more text").unwrap();
+    let view = store.view().unwrap();
+    let changed = view.notes.iter().find(|value| value.id == first).unwrap();
+    assert_eq!(changed.body, "Changed from VS Code with more text");
+    assert_eq!(changed.revision, 3);
+
+    let scratch = files[0].parent().unwrap();
+    let nested = scratch.join("Experiments");
+    std::fs::create_dir(&nested).unwrap();
+    let terminal_note = nested.join("Terminal note.md");
+    std::fs::write(&terminal_note, "Created directly from the terminal").unwrap();
+    std::fs::write(nested.join("ignored.txt"), "not a note").unwrap();
+    let view = store.view().unwrap();
+    assert!(view
+        .notes
+        .iter()
+        .any(|value| value.body == "Created directly from the terminal"));
+    assert_eq!(view.notes.len(), 2);
+
+    let logs = scratch.parent().unwrap().join("Logs");
+    let moved = logs.join("Renamed terminal note.md");
+    std::fs::rename(&terminal_note, &moved).unwrap();
+    let log_view = open(&mut store, &project, "log");
+    assert!(log_view
+        .notes
+        .iter()
+        .any(|value| value.body == "Created directly from the terminal"));
+    let scratch_view = open(&mut store, &project, "scratch");
+    assert!(!scratch_view
+        .notes
+        .iter()
+        .any(|value| value.body == "Created directly from the terminal"));
+
+    std::fs::remove_file(&moved).unwrap();
+    let log_view = open(&mut store, &project, "log");
+    assert!(!log_view
+        .notes
+        .iter()
+        .any(|value| value.body == "Created directly from the terminal"));
+    assert!(store
+        .backup()
+        .unwrap()
+        .contains("Created directly from the terminal"));
+    std::fs::write(&moved, "Created directly from the terminal").unwrap();
+    let log_view = store.view().unwrap();
+    assert!(log_view
+        .notes
+        .iter()
+        .any(|value| value.body == "Created directly from the terminal"));
+}
+
+#[test]
+fn version_one_database_materializes_existing_notes() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.sqlite");
+    let db = rusqlite::Connection::open(&path).unwrap();
+    db.execute_batch(include_str!("../src/migrations/0001_foundation.sql"))
+        .unwrap();
+    db.execute(
+        "INSERT INTO contexts(id,kind,name) VALUES('p','project','Legacy')",
+        [],
+    )
+    .unwrap();
+    db.execute(
+        "INSERT INTO notes VALUES('n','scratch','Existing body',1,1,1)",
+        [],
+    )
+    .unwrap();
+    db.execute("INSERT INTO note_contexts VALUES('n','p')", [])
+        .unwrap();
+    db.execute("INSERT INTO revisions VALUES('n',1,'Existing body',1)", [])
+        .unwrap();
+    db.execute("UPDATE workspace SET context_id='p'", [])
+        .unwrap();
+    drop(db);
+
+    let mut store = Store::open(&path).unwrap();
+    assert_eq!(store.view().unwrap().notes[0].body, "Existing body");
+    let files = markdown_files(store.workspace_path());
+    assert_eq!(files.len(), 1);
+    assert_eq!(std::fs::read_to_string(&files[0]).unwrap(), "Existing body");
+    let db = rusqlite::Connection::open(path).unwrap();
+    assert_eq!(
+        db.pragma_query_value::<i64, _>(None, "user_version", |row| row.get(0))
+            .unwrap(),
+        2
+    );
+}
+
 #[test]
 fn unsupported_database_is_not_migrated() {
     let dir = tempfile::tempdir().unwrap();

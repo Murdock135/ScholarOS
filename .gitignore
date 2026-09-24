@@ -4,3 +4,4 @@ target/
 test-results/
 playwright-report/
 *.sqlite*
+apps/desktop/src-tauri/gen/

@@ -65,3 +65,5 @@ export const restoreBackup = (json: string) =>
   invoke<string>("restore_backup", { json });
 export const exportBackup = (path: string) =>
   invoke<void>("export_backup", { path });
+
+export const openWorkspace = () => invoke<string>("open_workspace", {});

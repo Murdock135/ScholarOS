@@ -36,6 +36,9 @@ fn main() {
                     .display()
                     .to_string())),
                 "test_backup" => Ok(json!(store.backup()?)),
+                "open_workspace" | "test_workspace_path" => {
+                    Ok(json!(store.workspace_path().display().to_string()))
+                }
                 _ => Err("Unknown test method".into()),
             }
         })();

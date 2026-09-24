@@ -4,6 +4,7 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import {
   execute,
   exportBackup,
+  openWorkspace,
   previewBackup,
   restoreBackup,
   type View,
@@ -87,16 +88,22 @@ export default function App() {
   }
   async function flush() {
     const ed = editor.current;
-    if (ed) {
-      await ed.flush();
-      await execute({
-        type: "select_note",
-        context_id: ed.context,
-        section: ed.note.kind,
-        note_id: ed.note.id,
-        cursor: ed.cursor,
-      });
-    }
+    if (!ed) return;
+    const wasDirty = ed.dirty;
+    await ed.flush();
+    // A successful note save already persists the cursor. For a clean editor,
+    // reconcile first so a move or deletion outside ScholarOS is not rejected
+    // as a stale selection during navigation.
+    if (wasDirty) return;
+    const current = await execute({ type: "view" });
+    if (!current.notes.some((note) => note.id === ed.note.id)) return;
+    await execute({
+      type: "select_note",
+      context_id: ed.context,
+      section: ed.note.kind,
+      note_id: ed.note.id,
+      cursor: ed.cursor,
+    });
   }
   async function action(work: () => Promise<void>, saveFirst = true) {
     if (lock.current) return;
@@ -124,6 +131,11 @@ export default function App() {
       }
     };
     window.addEventListener("beforeunload", before);
+    const focus = () => {
+      if (!lock.current)
+        void action(async () => adopt(await execute({ type: "view" })));
+    };
+    window.addEventListener("focus", focus);
     let unlisten: (() => void) | undefined,
       disposed = false;
     if ("__TAURI_INTERNALS__" in window) {
@@ -145,6 +157,7 @@ export default function App() {
       disposed = true;
       unlisten?.();
       window.removeEventListener("beforeunload", before);
+      window.removeEventListener("focus", focus);
       editor.current?.dispose();
     };
   }, []);
@@ -309,6 +322,17 @@ export default function App() {
           <span className="offline-dot" />
           Stored on this device
           <div className="backup-actions">
+            <button
+              disabled={busy || !view}
+              onClick={() =>
+                void action(async () => {
+                  const path = await openWorkspace();
+                  setNotice(`Markdown workspace: ${path}`);
+                })
+              }
+            >
+              Open folder
+            </button>
             <button
               disabled={busy || !view}
               onClick={() =>
