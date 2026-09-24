@@ -1,0 +1,93 @@
+name: CI/CD
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential             libayatana-appindicator3-dev             libdbus-1-dev             librsvg2-dev             libssl-dev             libwebkit2gtk-4.1-dev             libxdo-dev             patchelf             pkg-config             xdg-utils
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run project checks
+        run: npm run check
+
+  package:
+    name: Package Linux executable
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: validate
+    runs-on: ubuntu-22.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y             build-essential             libayatana-appindicator3-dev             libdbus-1-dev             librsvg2-dev             libssl-dev             libwebkit2gtk-4.1-dev             libxdo-dev             patchelf             pkg-config             xdg-utils
+
+      - name: Install JavaScript dependencies
+        run: npm ci
+
+      - name: Build desktop executable
+        run: npm run desktop -- build --no-bundle
+
+      - name: Upload Linux executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: scholaros-linux-${{ github.sha }}
+          path: target/release/scholaros
+          if-no-files-found: error
+          retention-days: 14

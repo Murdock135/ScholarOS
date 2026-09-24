@@ -9,7 +9,7 @@
     "desktop": "cd apps/desktop && tauri",
     "test": "vitest run",
     "test:ui": "playwright test",
-    "check": "npm run build && npm test && cargo test"
+    "check": "./scripts/check.sh"
   },
   "dependencies": {
     "@tauri-apps/api": "^2",

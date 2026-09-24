@@ -24,7 +24,7 @@ The proposed stack is Tauri, React/TypeScript, Rust, and SQLite. Confirm the act
 2. Implement the smallest complete workflow that satisfies the request. Keep UI behavior, domain rules, storage, and migrations consistent.
 3. Keep project/area scope explicit in queries and commands. Enforce data invariants in application services and storage, not only UI controls.
 4. Use versioned database migrations. Protect saved data, preserve recoverable drafts, and make import/capture retries idempotent.
-5. Run checks appropriate to the change using the repository's actual scripts. Test consequential behavior and failure paths; avoid tests that merely duplicate implementation details. Documentation-only edits need document/link checks, not application tests.
+5. Run checks appropriate to the change using the repository's actual scripts. Use `npm run check` for the complete Linux suite when warranted. Test consequential behavior and failure paths; avoid tests that merely duplicate implementation details. Documentation-only edits need document/link checks, not application tests.
 6. Update affected documentation and write a concise work log for substantive work. Report what changed, validation performed, and remaining limitations honestly.
 
 Do not invent test commands or report unrun checks as passing. Keep secrets and provider tokens out of the repository, logs, and portable backups. Keep exported data and generated indexes separate from authoritative application state.

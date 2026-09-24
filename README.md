@@ -31,18 +31,16 @@ The Linux database is in Tauri's application data directory, normally `${XDG_DAT
 
 Backups contain the complete implemented slice: contexts, note bodies and revision history, file identities, explicit note links, selections and cursor positions, hierarchy, Task completion, and workspace selection. Format 1 and the database schema are validated before replacement starts. Unknown fields/versions, duplicate identities, broken relationships, invalid hierarchy, and inconsistent note history are rejected. Restore retains the previous Markdown folder instead of deleting it. Backup destinations must be new files; existing files are never overwritten. Backup JSON is unencrypted. The current slice has no attachment records or attachment storage; text that names a local file does not back up that file.
 
-## Checks
+## Checks and automation
+
+Install Chromium once on a development machine, then run the same complete suite used by CI:
 
 ```sh
-npm run build
-npm test
-cargo test -p scholar-core
-cargo clippy -p scholar-core --all-targets -- -D warnings
-cargo fmt --all --check
 npx playwright install --with-deps chromium
-npm run test:ui
-cargo check -p scholaros
+npm run check
 ```
+
+The check script runs formatting, Rust linting and tests, native Tauri compilation, the frontend build and unit tests, and Playwright workflows. GitHub Actions runs it for pull requests and pushes to `main`. After a successful `main` build, the workflow uploads the Linux executable as a 14-day artifact. It does not publish a release or installer.
 
 The Rust tests exercise real SQLite files, explicit scopes, hierarchy failures, conflict handling, failed writes, restore validation/rollback, and persistence in separate processes. Editor tests exercise overlapping edits and recoverable failures. Playwright runs the actual React UI against the same Rust service and SQLite through a **test-only** loopback transport. Its database is temporary and each request reopens it. This verifies UI/storage integration but does not test Tauri IPC, WebKit, native dialogs, or native window-close events. The HTTP test transport and Vite proxy are absent from production builds.
 
