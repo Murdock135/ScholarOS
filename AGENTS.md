@@ -2,7 +2,7 @@
 
 ## Product context
 
-ScholarOS is a local-first academic work application. Read `plan.md` before changing product behavior or architecture, then inspect the relevant implementation and documentation. The plan is a working specification; proposed interactions and unresolved discovery questions are not settled decisions.
+ScholarOS is a local-first academic work application. Read the `plan.md` entry point and the relevant numbered files under `docs/plan/` before changing product behavior or architecture, then inspect the relevant implementation and documentation. The plan is a working specification; proposed interactions and unresolved discovery questions are not settled decisions.
 
 The proposed stack is Tauri, React/TypeScript, Rust, and SQLite. Confirm the actual repository tooling before choosing commands or introducing dependencies. Do not scaffold the entire roadmap for a narrowly scoped task.
 
@@ -31,7 +31,8 @@ Do not invent test commands or report unrun checks as passing. Keep secrets and 
 
 ## Decisions and proposals
 
-- `plan.md`: overall product direction and delivery scope.
+- `plan.md`: stable plan entry point and topic index.
+- `docs/plan/`: the numbered product specification, roadmap, constraints, and unresolved decisions.
 - `docs/proposals/`: unresolved designs, alternatives, and experiments. Use a proposal when a meaningful choice needs discussion or validation.
 - `docs/adr/`: durable records of consequential architectural decisions, their rationale, and tradeoffs.
 - `logs/`: concise agent work summaries and handoff notes, not a second source of product requirements.

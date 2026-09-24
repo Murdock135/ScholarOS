@@ -1,6 +1,6 @@
 # ScholarOS
 
-A local-first academic workspace. This first vertical slice implements Areas, draft Projects, context-local Scratchpad and Logs, freeform autosaving notes, Milestones with Tasks, and validated JSON backup/restore.
+A local-first academic workspace with a VS Code/Obsidian-style dark workbench. The current vertical slice implements an activity rail, filesystem explorer, breadcrumbs, active-file editor tab, status bar, Areas, draft Projects, context-local Scratchpad and Logs, freeform autosaving notes, Milestones with Tasks, and validated JSON backup/restore.
 
 ## Run on Linux
 
@@ -20,7 +20,7 @@ Run these commands from the repository root. `npm run desktop -- build --no-bund
 2. Open Scratchpad or Logs and select **New note**. Write immediately; no title, milestone, task, or session is required.
 3. Edits autosave after a short pause. **Saved locally** means the Markdown file and SQLite revision metadata were committed. Switching notes, sections, or contexts flushes pending edits first. Each context retains its last section, selected note per section, and cursor.
 4. Open a Project's Milestones tab. Add an outcome, then its Tasks. Checking a Task persists its completion timestamp. Areas have their own notes; they never aggregate Project notes.
-5. Use **Open folder** to view the live Markdown workspace. You may create Markdown files directly anywhere below an existing Area or Project's Scratchpad or Logs folder, including nested folders. ScholarOS discovers them on navigation, reload, or when the app regains focus. Moving a file between those folders changes its context or kind when identity can be matched unambiguously.
+5. Browse the same live Markdown workspace in the in-app Explorer, or use **Open folder** to view it in your system file manager. You may create Markdown files directly anywhere below an existing Area or Project's Scratchpad or Logs folder, including nested folders. ScholarOS discovers them on navigation, reload, or when the app regains focus. Moving a file between those folders changes its context or kind when identity can be matched unambiguously.
 6. Use **Back up** to choose a new JSON filename. Use **Restore** to select a backup, review validated counts, and explicitly replace the workspace. The previous database snapshot and Markdown workspace are retained beside the database for rollback; the success message shows the JSON path. To roll back, restore that file.
 
 A failed save blocks navigation and retains the draft. **Retry save** retries persistence; **Save as recovery copy** saves a conflicted draft into a separate note without overwriting the original. Unsaved text is also journaled in the local webview storage for crash recovery. A forced process kill cannot guarantee recovery of keystrokes the operating system has not flushed. Saved text lives in Markdown; SQLite retains its identity and revision history.
@@ -48,10 +48,10 @@ The Rust tests exercise real SQLite files, explicit scopes, hierarchy failures, 
 
 ## Scope and architecture
 
-- [Product plan](plan.md)
+- [Product plan](docs/plan/README.md)
 - [Foundation architecture decision](docs/adr/0001-linux-local-foundation.md)
 - [Implementation work log](logs/2026-09-23-1600-local-foundation.md)
 
 The application code is in `apps/desktop`; the independent Rust domain/storage service and numbered SQL migrations are in `crates/core`. Markdown is the live note body, while SQLite is authoritative for identity, scope, hierarchy, navigation state, and revision history. The desktop has a single window and a single running instance. No network service runs in the desktop.
 
-All Projects in this slice remain drafts. Direct file discovery is limited to Markdown beneath existing Scratchpad and Logs folders; creating filesystem folders does not create typed Areas or Projects. External deletion hides the note while retaining recoverable history, but trash/recovery UI is deferred. Project activation, reassignment, completion/archive, explicit sharing UI, revision browsing, search, imports, sessions, startup routines, integrations, AI, graphs, PDF tracking, capture, and the interactive milestone bar are deferred. Explicit context-link and revision tables preserve room for future shared notes and archive snapshots; those future behaviors are not claimed as implemented. Milestone acceptance/progress and editing hierarchy names are also outside this initial slice.
+All Projects in this slice remain drafts. Direct file discovery is limited to Markdown beneath existing Scratchpad and Logs folders; creating filesystem folders does not create typed Areas or Projects. External deletion hides the note while retaining recoverable history, but trash/recovery UI is deferred. Multi-file tab management, in-app rename/move commands, Project activation, reassignment, completion/archive, explicit sharing UI, revision browsing, search, imports, sessions, startup routines, integrations, AI, graphs, PDF tracking, capture, and the interactive milestone bar are deferred. Explicit context-link and revision tables preserve room for future shared notes and archive snapshots; those future behaviors are not claimed as implemented. Milestone acceptance/progress and editing hierarchy names are also outside this initial slice.
