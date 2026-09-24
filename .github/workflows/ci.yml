@@ -85,7 +85,7 @@ jobs:
         run: npm run desktop -- build --no-bundle
 
       - name: Upload Linux executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: scholaros-linux-${{ github.sha }}
           path: target/release/scholaros
