@@ -12,7 +12,7 @@ Added a shared `npm run check` command that runs Rust formatting, linting, core 
 - `npm run check` — passed the complete local suite.
 - `npm run desktop -- build --no-bundle` — passed and produced `target/release/scholaros`.
 - Workflow and package files formatted with Prettier; shell script syntax checked with `bash -n`.
-- First GitHub Actions run — pending the initial push.
+- First GitHub Actions run exposed that native Tauri compilation requires the frontend build first on a clean checkout; reordered the shared script and queued a corrected run.
 
 ## Remaining work
 
