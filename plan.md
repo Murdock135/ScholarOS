@@ -9,11 +9,11 @@ The recommended product would consist of:
 1. **A Tauri desktop application**
    - React/TypeScript interface.
    - Rust host process for filesystem access, native PDF-window detection, background synchronization, and secure credential storage.
-   - Runs on Linux, Windows, and eventually macOS.
+   - Targets Linux first; Windows and macOS remain later portability work.
 
 2. **A local SQLite database**
-   - The authoritative structured store for projects, milestones, tasks, resources, reading progress, and logs.
-   - SQLite FTS for search.
+   - The authoritative structured store for projects, milestones, tasks, resources, reading events, note identities, context links, and revision history.
+   - SQLite FTS for structured records and an index of reconciled Markdown content.
    - Optional embeddings for semantic clustering and recommendations.
 
 3. **A browser extension**
@@ -21,14 +21,14 @@ The recommended product would consist of:
    - Reports reading progress to the desktop application.
    - Communicates with the local application through a small authenticated loopback API or browser native messaging.
 
-4. **An optional Obsidian-compatible export layer**
-   - Generates readable Markdown and YAML from the structured database.
-   - Allows the user to browse or back up their information in Obsidian without forcing the application itself to model everything as notes.
-   - When delivered in phase 7, the export is one-way; bidirectional synchronization should not be attempted until the data model is stable.
+4. **A live Markdown workspace**
+   - Stores Scratchpad and Log notes as real Markdown files in Area and Project folders.
+   - Allows the same notes to be opened in Obsidian, VS Code, and other text editors.
+   - Uses SQLite for structured relationships, navigation state, and revision history while reconciling external file edits.
 
-This preserves the parts of NewSecondBrain that already work—projects, disciplines, milestones, tasks, reading, and dashboards—without retaining its folder and file-management burden. The existing vault explicitly divides `Work/` into projects and disciplines and gives each item five or more subordinate files, which is understandable but creates repeated navigation and maintenance overhead. README.md:3-18 The current scaffolding script reinforces that repetition by creating a `Dive` directory and five template files for every work item. .scripts/make_work_item.py:4-26
+This preserves the parts of NewSecondBrain that already work—projects, disciplines, milestones, tasks, reading, and dashboards—while generating the workspace structure automatically instead of requiring manual folder and index maintenance. The existing vault explicitly divides `Work/` into projects and disciplines and gives each item five or more subordinate files, which is understandable but creates repeated navigation and maintenance overhead. README.md:3-18 The current scaffolding script reinforces that repetition by creating a `Dive` directory and five template files for every work item. .scripts/make_work_item.py:4-26
 
-I would **not** begin by building an Obsidian plugin. Obsidian could remain a useful export/viewer, but the requested live integrations, browser capture, background jobs, native PDF tracking, and lazy-loaded visual graph are better served by a dedicated application.
+Do not begin by building an Obsidian plugin. Obsidian and VS Code can edit the live Markdown workspace, while ScholarOS supplies scoped navigation, structured work, reconciliation, browser capture, background jobs, PDF tracking, and later graph features.
 
 ---
 
@@ -341,35 +341,32 @@ The bar is a useful overview and planning control, provided placement and comple
 
 Research is not always linear. Keep the milestone list available beside the bar, and present percentage as an estimate of tracked work rather than an objective measure of scientific achievement.
 
-## 5.4 Optional disk export
+## 5.4 Live Markdown workspace and portable export
 
-Export should preserve project/area context and the Scratchpad/Logs distinction:
+The live workspace preserves project/area context and the Scratchpad/Logs distinction:
 
 ```text
-Export/
-├── Work/
-│   ├── Areas/<area>/
-│   │   ├── Overview.md
-│   │   ├── Scratchpad/Index.md
-│   │   └── Logs/Index.md
-│   ├── Projects/<project>/
-│   │   ├── Overview.md
-│   │   ├── Scratchpad/Index.md
-│   │   └── Logs/Index.md
-│   └── Archive/<project>/
-├── Notes/                         # canonical bodies, stable IDs
-├── Inbox/Index.md
-├── Reading/2026/
-├── Library/Library Index.md
-└── Daily/2026/
+ScholarOS Workspace/
+├── Areas/<area-name>--<stable-id>/
+│   ├── Scratchpad/<title-or-untitled>--<stable-id>.md
+│   ├── Logs/<title-or-untitled>--<stable-id>.md
+│   └── Projects/<project-name>--<stable-id>/...
+├── Projects/<unassigned-project>--<stable-id>/...
+├── Inbox/<title-or-untitled>--<stable-id>.md
+└── .scholaros/                    # generated identity/index data; no secrets
 ```
 
-Each project/area index links only to its own notes, preserving optional pin/order settings. Canonical note files carry stable IDs and freeform bodies; multiple context indexes can link to the same file without editable copies. Export preserved revisions for archived-project links separately when necessary. Resolve imported wikilinks and attachment references through an original-path-to-ID mapping; report unresolved links without altering the original vault. The user enters through a project index, with no need to browse the canonical Notes directory.
+Files are UTF-8 Markdown and remain freeform; frontmatter is optional user content, not required system metadata. Stable IDs in names keep identity across safe user renames. ScholarOS watches or refreshes the workspace, validates external changes, records them as revisions, and updates search indexes. “Saved” means both the Markdown file and structured revision metadata were durably committed. If those writes cannot be completed consistently, retain the in-app draft and report recovery actions.
 
-Generate indexes automatically and write files atomically. JSON backup/restore preserves note bodies, revisions, kind, project/area/milestone/resource links, session links, context state, and import provenance. Preserve local note attachments in a backup bundle or provide an explicit missing/external attachment report; JSON references alone are not an attachment backup.
+A missing or externally moved file is not immediate permission to delete a note. Reconcile it by stable identity when possible; otherwise retain the last revision and place the discrepancy in recovery review. Explicit deletion moves the file and current record to recoverable trash. Ignore transient editor files and prevent symlink/path traversal outside the selected workspace.
 
-The phase 1 backup contract covers the entire application state, not just notes: hierarchy, notes/revisions, sessions, startup templates and occurrences, resources and reading events as those features arrive, import mappings, and schema version. Separate portable application data from device paths and credentials. Restore into a staging database, validate schema and relationships, preview missing files, and activate only after validation; retain the previous database for rollback. MVP restore replaces a workspace rather than merging two histories. Pause ingestion during restore, then require account reauthorization/reconnection as needed and reconcile source cursors before resuming. Rebuild search indexes from restored records. Never export OAuth or local capture tokens; rotate the capture token and repair extension pairing when restoring onto another installation.
+The first live-file slice covers notes with one editable context. Shared notes must still have one editable body: do not create independent Markdown copies in every linked folder. Before sharing UI ships, resolve its physical representation in a proposal and test it with editors that save by atomic replacement. The application explorer may present context-scoped aliases regardless of the physical representation. Archived contexts retain revision snapshots rather than writable file copies.
 
+Generated indexes are optional navigation aids and remain separate from authoritative note files. Structured Markdown/YAML export can later add project overviews, library indexes, daily records, wikilinks, and archive snapshots without changing the live-note contract.
+
+JSON backup/restore preserves note bodies, revisions, file identities, kind, project/area/milestone/resource links, session links, context state, and import provenance. Preserve local attachments in a backup bundle or provide an explicit missing/external attachment report; JSON references alone are not an attachment backup. Restore into staging, validate database relationships and destination paths, preview conflicts/missing files, retain a rollback snapshot of database and live files, then activate both together. Never remove unrelated files merely because they are absent from a restored snapshot.
+
+The backup contract expands with delivered features: hierarchy, notes/revisions, sessions, startup templates and occurrences, resources and reading events, import mappings, and schema version. Device paths and credentials remain installation-local. Pause ingestion during restore, require account reauthorization as needed, reconcile source cursors before resuming, and rebuild generated indexes. Never export OAuth or local capture tokens; rotate the capture token and repair extension pairing on another installation.
 ---
 
 # 6. Library design
@@ -784,8 +781,8 @@ Preferred flow:
 Browser extension
 → authenticated local API/native messaging
 → desktop application
-→ SQLite transaction
-→ optional atomic Markdown/JSON export
+→ validated SQLite transaction for resources and reading events
+→ Markdown write only when the user explicitly captures a research note
 ```
 
 Use:
@@ -918,68 +915,53 @@ The message should encourage without falsely claiming knowledge of the user’s 
 # 13. Proposed technical architecture
 
 ```text
-┌───────────────────────────────┐
-│ Tauri desktop application     │
-│ React + TypeScript UI         │
-├───────────────────────────────┤
-│ Rust application services     │
-│ - local API/native messaging  │
-│ - filesystem/export           │
-│ - OS/PDF integrations         │
-│ - secure credentials          │
-├───────────────────────────────┤
-│ SQLite                        │
-│ - normalized records          │
-│ - event log                   │
-│ - full-text search            │
-│ - sync cursors                │
-├───────────────────────────────┤
-│ Background workers            │
-│ - Drive connector             │
-│ - YouTube connector           │
-│ - Zotero/literature connector │
-│ - metadata extraction         │
-│ - graph/index processing      │
-└───────────────────────────────┘
-          ▲              ▲
-          │              │
- Browser extension    Optional web client
+┌──────────────────────────────────────┐
+│ Tauri desktop application            │
+│ React + TypeScript explorer/editor   │
+├──────────────────────────────────────┤
+│ Rust application services            │
+│ - scoped commands and reconciliation │
+│ - local API/native messaging         │
+│ - filesystem and OS integrations     │
+│ - backup/restore and credentials      │
+├───────────────────┬──────────────────┤
+│ Live Markdown     │ SQLite           │
+│ - note bodies     │ - hierarchy      │
+│ - user filenames  │ - links/state    │
+│ - user formatting │ - revisions      │
+│                   │ - events/indexes │
+├───────────────────┴──────────────────┤
+│ Background workers                   │
+│ - file watching/reconciliation       │
+│ - connectors and metadata extraction │
+│ - graph/index processing             │
+└──────────────────────────────────────┘
+          ▲                    ▲
+          │                    │
+ Browser extension      External editors
 ```
 
-## 13.1 Suggested repository layout for implementation
+A storage service coordinates file and database commits, detects external changes, and exposes only context-scoped commands to the UI. SQLite cannot silently overwrite a newer Markdown revision, and a filesystem event cannot bypass note ownership rules. Generated search data and indexes can be rebuilt; live Markdown and committed structured records require backup.
 
-When implementation begins, place the application outside the vault content structure:
+## 13.1 Repository layout
+
+The implemented repository uses:
 
 ```text
 apps/
-├── desktop/
-├── extension/
-└── web/
+└── desktop/          # React/Tauri desktop application
 
 crates/
-├── core/
-├── storage/
-├── connectors/
-├── pdf-observer/
-└── export/
-
-packages/
-├── domain/
-├── schemas/
-├── ui/
-└── client/
+└── core/             # domain rules, SQLite, backup/restore, file reconciliation
 
 docs/
-├── architecture/
-├── product/
-└── decisions/
+├── adr/
+└── proposals/
 
-fixtures/
-└── sample-library/
+logs/                 # implementation work summaries
 ```
 
-Do not put application source inside `Work/` because that directory is currently defined as user work content rather than software infrastructure. README.md:4-8
-
+Add `apps/extension`, connector crates, or shared packages only when a delivered vertical slice needs them. Application source remains separate from the user's live workspace.
 ---
 
 # 14. Core data entities
@@ -1048,7 +1030,7 @@ Important constraints:
 - `Task.milestone_id` is required for actionable tasks.
 - `Milestone.project_id` is required.
 - `Project.area_id` is required for active projects.
-- `ResearchNote` stores ID, optional title, freeform body, `kind: scratch | log`, created/edited times, and an optional activity date for Logs. Blank drafts are allowed. Note revisions support recovery and completed-project snapshots.
+- `ResearchNote` stores ID, mutable live file path, optional title, content hash/revision, `kind: scratch | log`, created/edited times, and an optional activity date for Logs. The stable ID remains authoritative when the path changes. Its freeform body lives in UTF-8 Markdown; committed revision snapshots support recovery and completed-project views. Blank drafts are allowed.
 - Next actions, headings, templates, and sessions are optional. Moving note kind does not duplicate its body.
 - Project/area joins define note visibility, with per-context pin/order and optional archived revision/kind references. Preserve archived membership against later unlink/delete operations; restoring or removing archived material is a separate explicit action. Milestone links require the note’s explicit association to the milestone’s owning project. Removing that project association also removes the associated milestone links in the same operation, while retaining other project links.
 - `ResearchContextState` stores last-opened section/note and editor position by project/area. These navigation details never broaden note membership.
@@ -1070,11 +1052,11 @@ Important constraints:
 
 ## Phase 0 — Product discovery and prototypes
 
-**Goal:** remove ambiguity before constructing the system.
+**Goal:** remove ambiguity before the affected later slices; the Linux foundation is already implemented.
 
 Deliverables:
 
-- Confirm target operating systems.
+- Validate the already selected initial Linux target and record prerequisites; treat Windows and macOS as later portability work.
 - Review the referenced mockups/attachments.
 - Inspect representative Excel rows, Zotero records, and Mendeley exports, including overlapping papers and notes.
 - Inventory the Google Drive library.
@@ -1093,6 +1075,8 @@ Exit criterion:
 
 ## Phase 1 — Structured work core
 
+**Status:** partially implemented. The SQLite foundation is complete; live Markdown, explorer navigation, search, capture, sessions, and migration remain.
+
 **Goal:** organize work through typed objects while preserving freeform research notes.
 
 Deliverables:
@@ -1101,17 +1085,18 @@ Deliverables:
 - Area → Project → Milestone → Task hierarchy.
 - Work Focus view.
 - Project view.
-- Project-local Scratchpad and Logs sections with automatic note indexes and blank-note capture; equivalent Area sections.
+- A live Markdown workspace plus an explorer-style tree, editor tabs, breadcrumbs, Project/Area Scratchpad and Logs folders, automatic note indexes, and blank-note capture.
 - Optional cross-project browsing and an unassigned capture inbox, separate from project working views.
 - Session-to-note links supporting several notes per session and continued notes across sessions.
 - Global capture dialog.
 - Search.
-- JSON backup and restore.
+- Coordinated JSON/file backup and restore with rollback.
+- Migration/materialization of existing SQLite note bodies into live Markdown files.
 - Read-only importer and dry-run migration report for the existing NewSecondBrain structure. Import work and notes first; retain unresolved reading/reference entries in import staging until phase 3 can normalize them.
 
 Exit criterion:
 
-- The user can manage a real project for a week, including freeform scratch work and logs, without maintaining vault indexes or task/milestone files. Switching between two test projects never shows unrelated notes; backup/restore preserves their bodies and links.
+- The user can manage a real project for a week, including editing the same Markdown note in ScholarOS and an external editor. Switching between two test projects never shows unrelated notes; conflicts retain both drafts, and backup/restore preserves files, revisions, and links.
 
 ## Phase 2 — Today dashboard
 
@@ -1160,7 +1145,7 @@ Deliverables:
 - Reading-log capture.
 - Offline queue.
 - Dashboard updates.
-- JSON backup remains available from phase 1; full Markdown/YAML export follows in phase 7 and does not gate reading capture.
+- Coordinated backup remains available from phase 1; structured Markdown/YAML export does not gate reading capture.
 
 Exit criterion:
 
@@ -1199,15 +1184,15 @@ Exit criterion:
 
 - A user can select a topic and obtain a credible ordered path consisting exclusively of material already in their library.
 
-## Phase 7 — Obsidian compatibility and migration
+## Phase 7 — Structured export and Obsidian enhancements
 
 Deliverables:
 
-- Stable Markdown/YAML export.
-- Project/area Scratchpad and Logs indexes linking canonical note files, including shared and archived revisions.
+- Stable Markdown/YAML export for structured records beyond live research notes.
+- Project/area Scratchpad and Logs indexes linking live note identities, shared-note targets, and archived revisions after the shared-file representation is resolved.
 - Wikilinks between exported projects, resources, scratch notes, and research/reading logs.
 - Link validation.
-- Incremental export.
+- Incremental structured export without rewriting unchanged live notes.
 - Validate the phase 1 migration report against exported links; migration itself is not deferred to this phase.
 - Optional Obsidian dashboard generated from the structured data.
 
@@ -1240,7 +1225,7 @@ The existing project README already contains fields such as `name`, `kind`, and 
 
 The importer should:
 
-1. Read the source vault without modification; write imported records only to the application database.
+1. Read the source vault without modification; write imported notes to the live workspace and structured records to SQLite through one idempotent import transaction.
 2. Produce a dry-run report.
 3. Detect duplicate project names and inconsistent `README.md` casing.
 4. Preserve original paths.
@@ -1291,7 +1276,8 @@ Uncertain tasks should enter **Clarify**, never be silently attached to a guesse
 - Shared note edits appear only in explicitly linked editable contexts; completed-project revisions remain unchanged.
 - Unlinking retains the note in remaining contexts or the unassigned inbox; kind changes move it without duplication.
 - Imported annotations and reading captures never appear automatically in Scratchpad or research Logs.
-- Backup/restore and Markdown export preserve note bodies, context membership, shared identities, archived revisions, and resolvable links.
+- Live-file reconciliation, backup/restore, and structured export preserve note bodies, file identities, context membership, shared identities, archived revisions, and resolvable links.
+- Existing SQLite-only notes materialize once without duplication; external Markdown edits become revisions; missing files enter recovery without erasing saved content; concurrent edits retain both drafts.
 - Carryover creates no duplicate recurring items and does not mutate archived snapshots.
 - Invalid template edits preserve the last valid template. Finishing the checklist does not lock the day; closure does. Timezone changes, refreshes, and template edits do not duplicate occurrences.
 - Dragging milestone markers does not complete work. Task changes recalculate unaccepted milestones; explicitly accepted milestones stay complete until reopened. Completing the final milestone does not violate the project activation rule.
@@ -1301,7 +1287,8 @@ Uncertain tasks should enter **Clarify**, never be silently attached to a guesse
 
 | Scenario | Required behavior |
 |---|---|
-| Edit a scratch note, switch projects, restart | Restore the committed draft in its original project; preserve pending edits on save failure. |
+| Edit a scratch note, switch projects, restart | Restore the committed Markdown file in its original project; preserve pending edits on file or database failure. |
+| Edit the same note externally while ScholarOS has a draft | Detect the newer file revision, block silent overwrite, and retain both versions for recovery. |
 | Close a project whose note is shared elsewhere | Archive shows its saved revision; the other project's editable note stays live; no inbox copies appear. |
 | Close the day, then finish a carried item | Record completion without changing the closed snapshot or generating a duplicate daily instance. |
 | Read two PDFs of the same paper | Keep their page positions and revision checks separate; label the selected track. |
@@ -1359,6 +1346,7 @@ Initial targets:
 - Dashboard useful content visible in under one second from a warm local database.
 - Library scrolling remains smooth with 50,000 metadata records.
 - Search response under 200 ms for ordinary local queries.
+- External Markdown changes appear within two seconds with the desktop running, without rescanning unchanged files.
 - Opening the cluster view does not load full document bodies.
 - Incremental synchronization does not scan every Drive item.
 - Browser capture confirmation appears in under 500 ms when the desktop service is running.
@@ -1374,7 +1362,8 @@ Initial targets:
 - Clear preview of context sent to an AI model.
 - Ability to disable all AI without losing core functionality.
 - Loopback API authenticated and origin-restricted.
-- Export files written atomically.
+- Live Markdown and export files use durable atomic replacement where supported, with recovery when file and metadata commits diverge.
+- Resolve and validate workspace paths; do not follow note paths or symlinks outside the selected workspace.
 - Database backups encrypted when requested.
 - Connector permissions kept to the smallest feasible scope.
 - User-visible audit history for imports and generated classifications.
@@ -1384,34 +1373,33 @@ This aligns with the repository’s existing direction that secrets should not b
 
 ---
 
-# 19. Decisions to resolve before implementation
+# 19. Decisions to resolve before affected phases
 
-The most important discovery questions are:
+The most important remaining discovery questions are:
 
-1. **Operating systems**
-   - Linux only initially?
-   - Linux and Windows?
-   - Is macOS required?
+1. **Live workspace behavior**
+   - Whether the initial workspace uses an app-managed default location or requires user selection; support safe relocation in either case.
+   - Whether phase 1 imports arbitrary Markdown already placed in the workspace or only files created/imported through ScholarOS.
+   - Before note sharing ships, choose a cross-platform physical representation that preserves one editable body under external editors that use atomic replacement.
 
-2. **PDF readers**
+2. **Platform expansion**
+   - Linux is the resolved initial target. Decide whether Windows or macOS comes next only when beginning that portability work.
+
+3. **PDF readers**
    - Exact Okular version and desktop environment.
    - Exact Adobe Acrobat edition and operating system.
    - Whether using an integrated PDF reader is acceptable.
 
-3. **Academic import details**
+4. **Academic import details**
    - Sources confirmed: Excel, Zotero, and Mendeley Web.
    - Confirm spreadsheet columns and stable row identities.
    - Confirm Zotero library access and Mendeley desktop/export availability.
    - Check note fidelity and duplicate/version examples across all three.
 
-4. **Deployment**
+5. **Deployment**
    - Entirely local?
    - Optional private cloud synchronization?
    - Multi-device use required in the first release?
-
-5. **Obsidian’s role**
-   - Current decision: optional one-way export/viewer.
-   - Confirm export location and desired fidelity. Editing exported files does not update the application; a primary or bidirectional Obsidian interface would require a separate scope change.
 
 6. **Meaning of progress**
    - Page number.
@@ -1430,7 +1418,7 @@ The most important discovery questions are:
 The first genuinely useful release should include only:
 
 - Areas, projects, milestones, and tasks.
-- Project/area-local Scratchpad and Logs with automatic indexes, scoped capture/search, and optional sessions.
+- A live Markdown workspace with an explorer tree, tabs, breadcrumbs, Project/Area-local Scratchpad and Logs, automatic indexes, scoped capture/search, external-edit reconciliation, and optional sessions.
 - Explicit note sharing across projects and a separate unassigned inbox; resumable contexts preserve project boundaries.
 - Editable startup templates, daily archive, and persistent unchecked items.
 - Today dashboard.
@@ -1439,18 +1427,18 @@ The first genuinely useful release should include only:
 - Browser extension capture.
 - Reading progress and reading-log cards.
 - List view.
-- JSON backup and restore.
+- Coordinated database-and-file backup and restore.
 
 Defer:
 
 - Google Drive and YouTube playlist connectors until the MVP import set works; these remain subsequent phase 3 increments.
 - Agent-assisted organization until reliable ingestion and review are established.
-- Optional AI daily messages and complete Markdown/YAML export.
+- Optional AI daily messages and complete structured Markdown/YAML export.
 - Semantic cluster graph.
 - Automatic learning paths.
 - Every academic database.
 - Every native PDF reader.
-- Bidirectional Obsidian sync.
+- Obsidian-specific plugin features beyond live Markdown file compatibility.
 - Collaboration.
 - Mobile applications.
 - Fully automatic AI classification.
@@ -1491,4 +1479,17 @@ Resolved remaining conflicts in final-milestone completion, paused versus archiv
 
 ## Initial implementation boundary — 2026-09-23
 
-The implementation request resolves the initial operating-system target to **Linux**, using Tauri, React/TypeScript, Rust, and SQLite. The first vertical slice is narrower than full phase 1: Areas and draft Projects; their local Scratchpad/Logs; freeform autosave and context restoration; Milestones with Tasks; and validated backup/restore. Project activation/archive, sharing UI, imports, sessions, startup routines, integrations, AI, graphs, PDF tracking, browser capture, and the interactive milestone bar remain subsequent work. This boundary does not claim phase 1 or the overall MVP is complete. See [ADR 0001](docs/adr/0001-linux-local-foundation.md) for the implemented persistence and restore architecture.
+The implementation request resolved the initial operating-system target to **Linux**, using Tauri, React/TypeScript, Rust, and SQLite. The completed foundation slice includes Areas and draft Projects; scoped SQLite-backed Scratchpad/Logs; freeform autosave and context restoration; Milestones with Tasks; and validated JSON backup/restore. The next foundation slice replaces SQLite-only note bodies with the live Markdown workspace and explorer behavior in [ADR 0002](docs/adr/0002-live-markdown-workspace.md), including migration and coordinated backup. Project activation/archive, sharing UI, imports, sessions, startup routines, integrations, AI, graphs, PDF tracking, browser capture, and the interactive milestone bar remain subsequent work. This boundary does not claim phase 1 or the overall MVP is complete.
+
+## Live Markdown workspace decision — 2026-09-23
+
+ScholarOS workspaces behave like a file-based editor. Areas and Projects appear as folders, Scratchpad and Logs are child folders, and notes are real Markdown files that can also be opened in Obsidian, VS Code, or another text editor.
+
+Markdown is the live representation of note content. SQLite remains authoritative for identities, explicit context links, hierarchy, selections, tasks, and revision history. ScholarOS reconciles external file changes through stable note identities; it does not treat a missing file as permission to discard saved content. Conflicting in-app and external edits retain a recoverable draft rather than silently choosing one version.
+
+This replaces the earlier one-way-export-only decision for research notes. Export is still appropriate for structured records that do not have a direct file form. The workspace location, file naming contract, migration of existing notes, backup coverage, and reconciliation rules are recorded in ADR 0002. A filesystem-like UI does not weaken project/area note scoping or turn unrelated files into research notes.
+
+
+## Full-plan consistency review — 2026-09-23
+
+Reviewed all sections after adopting the live Markdown workspace. Aligned the recommendation, work model, browser capture boundary, technical architecture, data entities, delivery phases, migration, tests, performance, security, discovery questions, and MVP. Live research notes now enter in phase 1; phase 7 covers structured export and optional Obsidian enhancements. The initial platform is Linux. Shared-note physical representation remains an explicit design item before sharing UI is implemented; it must preserve one editable body without relying on file copies that can diverge. Rechecked the linked official Zotero, Mendeley, Drive, and YouTube documentation on 2026-09-23; the scoped connector claims remain supported, while Mendeley exports contain reference metadata and do not directly export PDFs.
